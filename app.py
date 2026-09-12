@@ -9,7 +9,7 @@ st.set_page_config(
 
 st.title("📸 Arquitectura & Urbanismo AI Editor")
 st.write(
-    "Sube tu foto para analizar su histograma, perspectiva y color con IA gratuita (Google Gemini)."
+    "Sube tu foto para analizar su histograma, perspectiva y color con IA gratuita."
 )
 
 # Barra lateral para configuración
@@ -28,7 +28,7 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    st.caption("Versión impulsada por Google Gemini 1.5 Flash (Free Tier).")
+    st.caption("Motor de visión adaptativo con auto-detección de modelo.")
 
 # Selector de archivo
 uploaded_file = st.file_uploader(
@@ -45,13 +45,48 @@ if uploaded_file is not None:
                 "Por favor, introduce tu Gemini API Key en la barra lateral para continuar."
             )
         else:
-            with st.spinner(
-                "Analizando geometría, rango dinámico y colorimetría con Gemini..."
-            ):
+            with st.spinner("Conectando con la IA y analizando imagen..."):
                 try:
-                    # Configurar Gemini
-                    genai.configure(api_key=api_key)
-                    model = genai.GenerativeModel("gemini-1.5-flash")
+                    # Configurar la API
+                    genai.configure(api_key=api_key.strip())
+
+                    # Buscar el mejor modelo disponible en la cuenta del usuario
+                    modelos_disponibles = [
+                        m.name
+                        for m in genai.list_models()
+                        if "generateContent" in m.supported_generation_methods
+                    ]
+
+                    # Prioridad de modelos de visión más rápidos y modernos
+                    modelo_elegido = None
+                    preferencias = [
+                        "gemini-2.0-flash",
+                        "gemini-1.5-flash-latest",
+                        "gemini-1.5-flash",
+                        "gemini-1.5-pro",
+                        "gemini-pro-vision",
+                    ]
+
+                    for pref in preferencias:
+                        for disp in modelos_disponibles:
+                            if pref in disp:
+                                modelo_elegido = disp
+                                break
+                        if modelo_elegido:
+                            break
+
+                    # Si no coincide ninguno de la lista, toma el primero que permita contenido
+                    if not modelo_elegido and modelos_disponibles:
+                        modelo_elegido = modelos_disponibles[0]
+
+                    if not modelo_elegido:
+                        st.error(
+                            "No se encontraron modelos disponibles para esta clave de API."
+                        )
+                        st.stop()
+
+                    # Instanciar el modelo detectado
+                    model = genai.GenerativeModel(modelo_elegido)
 
                     prompt = f"""
 Eres un Master Retoucher y Colorista Editorial de Arquitectura y Urbanismo de nivel mundial (referencia: Architectural Digest, El Croquis, National Geographic).
@@ -78,7 +113,9 @@ Genera una respuesta en Markdown con esta estructura exacta:
 
                     response = model.generate_content([prompt, image])
 
-                    st.success("¡Análisis completado con éxito!")
+                    st.success(
+                        f"¡Análisis completado exitosamente con {modelo_elegido}!"
+                    )
                     st.markdown("---")
                     st.markdown(response.text)
 
