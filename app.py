@@ -11,16 +11,16 @@ st.set_page_config(
 
 st.title("📸 Arquitectura & Urbanismo AI Editor")
 st.write(
-    "Sube tu foto para analizar su histograma, perspectiva y color con IA de visión gratuita."
+    "Sube tu foto para analizar su histograma, perspectiva y color con **GitHub Models (GPT-4o-mini)**."
 )
 
 # Barra lateral para configuración
 with st.sidebar:
     st.header("Configuración")
     api_key = st.text_input(
-        "Introduce tu OpenRouter API Key (Gratis):",
+        "Introduce tu GitHub Token (ghp_...):",
         type="password",
-        help="Obtenla gratis en https://openrouter.ai/keys ingresando con tu GitHub.",
+        help="Obtenlo gratis en https://github.com/settings/tokens/new",
     )
 
     estilo = st.radio(
@@ -30,10 +30,10 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    st.caption("Impulsado por modelos gratuitos de visión en OpenRouter.")
+    st.caption("Impulsado por GitHub Models & Azure AI.")
 
 
-# Función para optimizar y convertir imagen a Base64
+# Función para redimensionar y codificar imagen
 def procesar_imagen_base64(img_pil, max_dim=1200):
     img = img_pil.convert("RGB")
     img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
@@ -54,14 +54,14 @@ if uploaded_file is not None:
     if st.button("🚀 Analizar Foto y Generar Prompt", type="primary"):
         if not api_key:
             st.error(
-                "Por favor, introduce tu OpenRouter API Key en la barra lateral para continuar."
+                "Por favor, introduce tu GitHub Token (ghp_...) en la barra lateral."
             )
         else:
-            with st.spinner("Analizando geometría, exposición y colorimetría..."):
+            with st.spinner("Procesando con GPT-4o-mini (GitHub Models)..."):
                 try:
-                    # Cliente OpenAI apuntando a OpenRouter
+                    # Cliente OpenAI apuntando al Endpoint de GitHub Models
                     client = OpenAI(
-                        base_url="https://openrouter.ai/api/v1",
+                        base_url="https://models.inference.ai.azure.com",
                         api_key=api_key.strip(),
                     )
 
@@ -90,60 +90,36 @@ Genera una respuesta en Markdown con esta estructura exacta:
 (Proporciona los valores numéricos precisos (-100 a +100) que el usuario debe mover en su teléfono para esta imagen, cubriendo: Luz, Color, Efectos, Detalle y Geometría).
 """
 
-                    # Lista de modelos de visión 100% gratuitos en OpenRouter
-                    modelos_gratuitos = [
-                        "google/gemini-2.0-flash-exp:free",
-                        "google/gemini-flash-1.5:free",
-                        "meta-llama/llama-3.2-11b-vision-instruct:free",
-                        "qwen/qwen-2-vl-72b-instruct:free",
-                    ]
-
-                    respuesta = None
-                    modelo_activo = ""
-
-                    for mod in modelos_gratuitos:
-                        try:
-                            response = client.chat.completions.create(
-                                model=mod,
-                                messages=[
+                    response = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": prompt_sistema},
+                            {
+                                "role": "user",
+                                "content": [
                                     {
-                                        "role": "system",
-                                        "content": prompt_sistema,
+                                        "type": "text",
+                                        "text": "Analiza esta fotografía y genera el informe técnico y el prompt correspondiente.",
                                     },
                                     {
-                                        "role": "user",
-                                        "content": [
-                                            {
-                                                "type": "text",
-                                                "text": "Analiza esta fotografía y genera el informe técnico y el prompt correspondiente.",
-                                            },
-                                            {
-                                                "type": "image_url",
-                                                "image_url": {
-                                                    "url": f"data:image/jpeg;base64,{base64_image}"
-                                                },
-                                            },
-                                        ],
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": f"data:image/jpeg;base64,{base64_image}"
+                                        },
                                     },
                                 ],
-                                max_tokens=1500,
-                            )
-                            respuesta = response.choices[0].message.content
-                            modelo_activo = mod
-                            break
-                        except Exception:
-                            continue
+                            },
+                        ],
+                        max_tokens=1500,
+                    )
 
-                    if respuesta:
-                        st.success(
-                            f"¡Análisis completado exitosamente con {modelo_activo}!"
-                        )
-                        st.markdown("---")
-                        st.markdown(respuesta)
-                    else:
-                        st.error(
-                            "Los servidores gratuitos están saturados momentáneamente. Prueba de nuevo en unos segundos."
-                        )
+                    resultado = response.choices[0].message.content
+
+                    st.success(
+                        "¡Análisis completado exitosamente con GitHub Models!"
+                    )
+                    st.markdown("---")
+                    st.markdown(resultado)
 
                 except Exception as e:
                     st.error(f"Error técnico: {str(e)}")
