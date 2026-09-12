@@ -1,6 +1,4 @@
-import base64
-import io
-from openai import OpenAI
+import google.generativeai as genai
 from PIL import Image
 import streamlit as st
 
@@ -11,16 +9,16 @@ st.set_page_config(
 
 st.title("📸 Arquitectura & Urbanismo AI Editor")
 st.write(
-    "Sube tu foto para analizar su histograma, perspectiva y color, y obtener un prompt maestro y ajustes para Lightroom."
+    "Sube tu foto para analizar su histograma, perspectiva y color con IA gratuita (Google Gemini)."
 )
 
 # Barra lateral para configuración
 with st.sidebar:
     st.header("Configuración")
     api_key = st.text_input(
-        "Introduce tu OpenAI API Key:",
+        "Introduce tu Gemini API Key (Gratis):",
         type="password",
-        help="Necesitas una clave de OpenAI con acceso a GPT-4o / GPT-4o-mini.",
+        help="Obtén tu clave gratis en https://aistudio.google.com/app/apikey",
     )
 
     estilo = st.radio(
@@ -30,13 +28,9 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    st.caption("Hecho para fotógrafos de arquitectura y editores de contenido.")
+    st.caption("Versión impulsada por Google Gemini 1.5 Flash (Free Tier).")
 
-
-def encode_image(image_bytes):
-    return base64.b64encode(image_bytes).decode("utf-8")
-
-
+# Selector de archivo
 uploaded_file = st.file_uploader(
     "Carga tu fotografía (JPG o PNG)", type=["jpg", "jpeg", "png"]
 )
@@ -48,20 +42,18 @@ if uploaded_file is not None:
     if st.button("🚀 Analizar Foto y Generar Prompt", type="primary"):
         if not api_key:
             st.error(
-                "Por favor, introduce tu OpenAI API Key en la barra lateral para continuar."
+                "Por favor, introduce tu Gemini API Key en la barra lateral para continuar."
             )
         else:
             with st.spinner(
-                "Analizando geometría, rango dinámico y colorimetría..."
+                "Analizando geometría, rango dinámico y colorimetría con Gemini..."
             ):
                 try:
-                    client = OpenAI(api_key=api_key)
+                    # Configurar Gemini
+                    genai.configure(api_key=api_key)
+                    model = genai.GenerativeModel("gemini-1.5-flash")
 
-                    buffered = io.BytesIO()
-                    image.save(buffered, format="JPEG")
-                    base64_image = encode_image(buffered.getvalue())
-
-                    system_instructions = f"""
+                    prompt = f"""
 Eres un Master Retoucher y Colorista Editorial de Arquitectura y Urbanismo de nivel mundial (referencia: Architectural Digest, El Croquis, National Geographic).
 
 Tu misión es analizar la imagen subida en 4 ejes:
@@ -84,34 +76,11 @@ Genera una respuesta en Markdown con esta estructura exacta:
 (Proporciona los valores numéricos precisos (-100 a +100) que el usuario debe mover en su teléfono para esta imagen, cubriendo: Luz, Color, Efectos, Detalle y Geometría).
 """
 
-                    response = client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        messages=[
-                            {"role": "system", "content": system_instructions},
-                            {
-                                "role": "user",
-                                "content": [
-                                    {
-                                        "type": "text",
-                                        "text": "Analiza esta fotografía y genera el reporte técnico y el prompt correspondiente.",
-                                    },
-                                    {
-                                        "type": "image_url",
-                                        "image_url": {
-                                            "url": f"data:image/jpeg;base64,{base64_image}"
-                                        },
-                                    },
-                                ],
-                            },
-                        ],
-                        max_tokens=1200,
-                    )
+                    response = model.generate_content([prompt, image])
 
-                    resultado = response.choices[0].message.content
-
-                    st.success("¡Análisis completado!")
+                    st.success("¡Análisis completado con éxito!")
                     st.markdown("---")
-                    st.markdown(resultado)
+                    st.markdown(response.text)
 
                 except Exception as e:
                     st.error(f"Ocurrió un error al procesar la imagen: {e}")
