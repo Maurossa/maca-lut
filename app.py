@@ -1,4 +1,6 @@
-import google.generativeai as genai
+import base64
+import io
+from openai import OpenAI
 from PIL import Image
 import streamlit as st
 
@@ -9,16 +11,16 @@ st.set_page_config(
 
 st.title("📸 Arquitectura & Urbanismo AI Editor")
 st.write(
-    "Sube tu foto para analizar su histograma, perspectiva y color con IA gratuita."
+    "Sube tu foto para analizar su histograma, perspectiva y color con IA de visión gratuita."
 )
 
 # Barra lateral para configuración
 with st.sidebar:
     st.header("Configuración")
     api_key = st.text_input(
-        "Introduce tu Gemini API Key (Gratis):",
+        "Introduce tu OpenRouter API Key (Gratis):",
         type="password",
-        help="La clave copiada desde Google AI Studio.",
+        help="Obtenla gratis en https://openrouter.ai/keys ingresando con tu GitHub.",
     )
 
     estilo = st.radio(
@@ -28,7 +30,17 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    st.caption("Motor de visión adaptativo.")
+    st.caption("Impulsado por modelos gratuitos de visión en OpenRouter.")
+
+
+# Función para optimizar y convertir imagen a Base64
+def procesar_imagen_base64(img_pil, max_dim=1200):
+    img = img_pil.convert("RGB")
+    img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+    buffered = io.BytesIO()
+    img.save(buffered, format="JPEG", quality=85)
+    return base64.b64encode(buffered.getvalue()).decode("utf-8")
+
 
 # Selector de archivo
 uploaded_file = st.file_uploader(
@@ -36,56 +48,26 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is not None:
-    # Asegurar compatibilidad de formato de imagen (RGB)
     raw_image = Image.open(uploaded_file)
-    image = raw_image.convert("RGB")
-    st.image(image, caption="Fotografía cargada", use_container_width=True)
+    st.image(raw_image, caption="Fotografía cargada", use_container_width=True)
 
     if st.button("🚀 Analizar Foto y Generar Prompt", type="primary"):
         if not api_key:
             st.error(
-                "Por favor, introduce tu Gemini API Key en la barra lateral para continuar."
+                "Por favor, introduce tu OpenRouter API Key en la barra lateral para continuar."
             )
         else:
-            with st.spinner("Consultando modelos y analizando imagen..."):
+            with st.spinner("Analizando geometría, exposición y colorimetría..."):
                 try:
-                    # Configurar la API
-                    clean_key = api_key.strip()
-                    genai.configure(api_key=clean_key)
+                    # Cliente OpenAI apuntando a OpenRouter
+                    client = OpenAI(
+                        base_url="https://openrouter.ai/api/v1",
+                        api_key=api_key.strip(),
+                    )
 
-                    # Listar modelos disponibles en la cuenta
-                    modelos_disponibles = []
-                    for m in genai.list_models():
-                        if "generateContent" in m.supported_generation_methods:
-                            modelos_disponibles.append(m.name)
+                    base64_image = procesar_imagen_base64(raw_image)
 
-                    if not modelos_disponibles:
-                        st.error(
-                            "Tu clave es válida, pero tu proyecto no tiene ningún modelo habilitado en Google Cloud."
-                        )
-                        st.stop()
-
-                    # Seleccionar el mejor modelo de visión disponible
-                    modelo_a_usar = None
-                    preferencias = [
-                        "gemini-1.5-flash",
-                        "gemini-2.0-flash",
-                        "gemini-1.5-flash-latest",
-                        "gemini-1.5-pro",
-                    ]
-
-                    for pref in preferencias:
-                        for disp in modelos_disponibles:
-                            if pref in disp:
-                                modelo_a_usar = disp
-                                break
-                        if modelo_a_usar:
-                            break
-
-                    if not modelo_a_usar:
-                        modelo_a_usar = modelos_disponibles[0]
-
-                    prompt = f"""
+                    prompt_sistema = f"""
 Eres un Master Retoucher y Colorista Editorial de Arquitectura y Urbanismo de nivel mundial (referencia: Architectural Digest, El Croquis, National Geographic).
 
 Tu misión es analizar la imagen subida en 4 ejes:
@@ -108,14 +90,60 @@ Genera una respuesta en Markdown con esta estructura exacta:
 (Proporciona los valores numéricos precisos (-100 a +100) que el usuario debe mover en su teléfono para esta imagen, cubriendo: Luz, Color, Efectos, Detalle y Geometría).
 """
 
-                    model = genai.GenerativeModel(modelo_a_usar)
-                    response = model.generate_content([prompt, image])
+                    # Lista de modelos de visión 100% gratuitos en OpenRouter
+                    modelos_gratuitos = [
+                        "google/gemini-2.0-flash-exp:free",
+                        "google/gemini-flash-1.5:free",
+                        "meta-llama/llama-3.2-11b-vision-instruct:free",
+                        "qwen/qwen-2-vl-72b-instruct:free",
+                    ]
 
-                    st.success(
-                        f"¡Análisis completado exitosamente con {modelo_a_usar}!"
-                    )
-                    st.markdown("---")
-                    st.markdown(response.text)
+                    respuesta = None
+                    modelo_activo = ""
+
+                    for mod in modelos_gratuitos:
+                        try:
+                            response = client.chat.completions.create(
+                                model=mod,
+                                messages=[
+                                    {
+                                        "role": "system",
+                                        "content": prompt_sistema,
+                                    },
+                                    {
+                                        "role": "user",
+                                        "content": [
+                                            {
+                                                "type": "text",
+                                                "text": "Analiza esta fotografía y genera el informe técnico y el prompt correspondiente.",
+                                            },
+                                            {
+                                                "type": "image_url",
+                                                "image_url": {
+                                                    "url": f"data:image/jpeg;base64,{base64_image}"
+                                                },
+                                            },
+                                        ],
+                                    },
+                                ],
+                                max_tokens=1500,
+                            )
+                            respuesta = response.choices[0].message.content
+                            modelo_activo = mod
+                            break
+                        except Exception:
+                            continue
+
+                    if respuesta:
+                        st.success(
+                            f"¡Análisis completado exitosamente con {modelo_activo}!"
+                        )
+                        st.markdown("---")
+                        st.markdown(respuesta)
+                    else:
+                        st.error(
+                            "Los servidores gratuitos están saturados momentáneamente. Prueba de nuevo en unos segundos."
+                        )
 
                 except Exception as e:
-                    st.error(f"Detalle técnico del error: {str(e)}")
+                    st.error(f"Error técnico: {str(e)}")
